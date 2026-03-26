@@ -1,5 +1,5 @@
-const API = "https://your-backend.onrender.com";
-const API_KEY = "some_random_secret_123";
+const API = "httpshttps://receipt-pwa.onrender.com://your-backend.onrender.com";
+const API_KEY = "mysecret123";
 
 async function loadTransactions() {
   const res = await fetch(`${API}/transactions`, {
