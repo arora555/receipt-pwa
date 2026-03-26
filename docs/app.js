@@ -1,136 +1,156 @@
-const API = "http://192.168.1.48:3000"; // replace with your local backend IP
-const API_KEY = "mysecret123";
+// =======================
+// Frontend JS for Receipt Tracker PWA
+// =======================
 
+// Backend API hosted on Render
+const API = "https://receipt-pwa.onrender.com";  // Replace with your Render backend URL
+const API_KEY = "mysecret123";                  // Matches the key set in Render env
+
+// DOM Elements
 const captureBtn = document.getElementById("captureBtn");
+const cameraInput = document.getElementById("cameraInput");
 const viewBtn = document.getElementById("viewBtn");
 const mainMenu = document.getElementById("mainMenu");
-const cameraSection = document.getElementById("cameraSection");
-const video = document.getElementById("video");
 const transactionsSection = document.getElementById("transactionsSection");
 const backToMenuBtn = document.getElementById("backToMenuBtn");
 const list = document.getElementById("list");
 
 let accumulative = 0;
-let stream = null;
 
-// --- Capture Receipt ---
-captureBtn.addEventListener("click", async () => {
-  mainMenu.classList.add("hidden");
-  cameraSection.classList.remove("hidden");
+// -----------------------
+// 1. Capture Receipt
+// -----------------------
+captureBtn.addEventListener("click", () => {
+  // Open native camera directly on iPhone
+  cameraInput.click();
+});
+
+cameraInput.addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
 
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } },
-      audio: false
+    // OCR with Tesseract.js
+    const { data: { text } } = await Tesseract.recognize(file, 'eng');
+
+    // Extract date and total
+    const dateMatch = text.match(/\d{4}-\d{2}-\d{2}/);
+    const totalMatch = text.match(/Total\s*\$?(\d+(\.\d{1,2})?)/i);
+
+    if (!dateMatch || !totalMatch) {
+      alert("Could not detect date or total. Please retake the picture properly.");
+      cameraInput.value = "";
+      return;
+    }
+
+    const date = dateMatch[0];
+    const total = parseFloat(totalMatch[1]);
+    accumulative += total;
+
+    // Save to backend
+    await fetch(`${API}/transactions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY
+      },
+      body: JSON.stringify({
+        amount: total,
+        category: "Receipt",
+        date,
+        accumulative
+      })
     });
-    video.srcObject = stream;
-    video.setAttribute("playsinline", true);
-    await video.play();
 
-    // Take snapshot automatically after 1 sec for simplicity (or you can add a tap listener)
-    setTimeout(takeSnapshot, 1000);
+    // Download the image to Photos
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `receipt_${date}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
 
+    alert(`Transaction saved!\nDate: ${date}\nTotal: $${total.toFixed(2)}`);
   } catch (err) {
     console.error(err);
-    alert("Cannot access camera. Make sure you allowed permissions.");
-    mainMenu.classList.remove("hidden");
-    cameraSection.classList.add("hidden");
+    alert("Error processing the receipt. Please try again.");
+  } finally {
+    cameraInput.value = ""; // reset input for next capture
   }
 });
 
-// --- Take Snapshot & OCR ---
-async function takeSnapshot() {
-  const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  const blob = await new Promise(res => canvas.toBlob(res));
-
-  const { data: { text } } = await Tesseract.recognize(blob, 'eng');
-
-  let dateMatch = text.match(/\d{4}-\d{2}-\d{2}/);
-  let totalMatch = text.match(/Total\s*\$?(\d+(\.\d{1,2})?)/i);
-
-  if (!dateMatch || !totalMatch) {
-    alert("Could not detect date or total. Retake the receipt properly.");
-    stopCamera();
-    mainMenu.classList.remove("hidden");
-    cameraSection.classList.add("hidden");
-    return;
-  }
-
-  const date = dateMatch[0];
-  const total = parseFloat(totalMatch[1]);
-  accumulative += total;
-
-  // Save to backend
-  await fetch(`${API}/transactions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
-    body: JSON.stringify({ amount: total, category: "Receipt", date, accumulative })
-  });
-
-  alert(`Transaction saved!\nDate: ${date}\nTotal: $${total.toFixed(2)}`);
-
-  stopCamera();
-  mainMenu.classList.remove("hidden");
-  cameraSection.classList.add("hidden");
-}
-
-function stopCamera() {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-    stream = null;
-  }
-}
-
-// --- View Transactions ---
+// -----------------------
+// 2. View Transactions
+// -----------------------
 viewBtn.addEventListener("click", async () => {
   mainMenu.classList.add("hidden");
   transactionsSection.classList.remove("hidden");
   loadTransactions();
 });
 
-// --- Back to Main Menu ---
+// Back button to main menu
 backToMenuBtn.addEventListener("click", () => {
   transactionsSection.classList.add("hidden");
   mainMenu.classList.remove("hidden");
 });
 
-// --- Load Transactions ---
+// -----------------------
+// 3. Load Transactions
+// -----------------------
 async function loadTransactions() {
-  const res = await fetch(`${API}/transactions`, { headers: { "x-api-key": API_KEY } });
-  const data = await res.json();
+  try {
+    const res = await fetch(`${API}/transactions`, {
+      headers: { "x-api-key": API_KEY }
+    });
+    const data = await res.json();
 
-  let accum = 0;
-  list.innerHTML = "";
-  data.forEach(t => {
-    accum += parseFloat(t.amount);
-    const li = document.createElement("li");
-    li.innerHTML = `
-      ${t.date} - $${t.amount.toFixed(2)} (Accum: $${accum.toFixed(2)})
-      <button onclick="editTransaction(${t.id}, ${t.amount})">Edit</button>
-      <button onclick="deleteTransaction(${t.id})">Delete</button>
-    `;
-    list.appendChild(li);
-  });
+    let accum = 0;
+    list.innerHTML = "";
+    data.forEach(t => {
+      accum += parseFloat(t.amount);
+      const li = document.createElement("li");
+      li.innerHTML = `
+        ${t.date} - $${t.amount.toFixed(2)} (Accum: $${accum.toFixed(2)})
+        <button onclick="editTransaction(${t.id}, ${t.amount})">Edit</button>
+        <button onclick="deleteTransaction(${t.id})">Delete</button>
+      `;
+      list.appendChild(li);
+    });
+  } catch (err) {
+    console.error(err);
+    alert("Could not load transactions.");
+  }
 }
 
-// --- Edit/Delete ---
+// -----------------------
+// 4. Edit / Delete Transactions
+// -----------------------
 window.deleteTransaction = async function(id) {
-  await fetch(`${API}/transactions/${id}`, { method: "DELETE", headers: { "x-api-key": API_KEY } });
-  loadTransactions();
+  try {
+    await fetch(`${API}/transactions/${id}`, {
+      method: "DELETE",
+      headers: { "x-api-key": API_KEY }
+    });
+    loadTransactions();
+  } catch (err) {
+    console.error(err);
+    alert("Failed to delete transaction.");
+  }
 }
 
 window.editTransaction = async function(id, amount) {
   const newAmount = prompt("New amount", amount);
   if (!newAmount) return;
-  await fetch(`${API}/transactions/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
-    body: JSON.stringify({ amount: parseFloat(newAmount) })
-  });
-  loadTransactions();
+
+  try {
+    await fetch(`${API}/transactions/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
+      body: JSON.stringify({ amount: parseFloat(newAmount) })
+    });
+    loadTransactions();
+  } catch (err) {
+    console.error(err);
+    alert("Failed to update transaction.");
+  }
 }

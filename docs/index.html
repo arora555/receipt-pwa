@@ -14,18 +14,16 @@
   <h1>Receipt Tracker</h1>
 
   <div id="mainMenu">
-    <button id="captureBtn">Capture Receipt</button>
-    <button id="viewBtn">View Transactions</button>
+    <button class="liquid-btn" id="captureBtn">Capture Receipt</button>
+    <button class="liquid-btn" id="viewBtn">View Transactions</button>
   </div>
 
-  <!-- Camera Section (hidden initially) -->
-  <div id="cameraSection" class="hidden">
-    <video id="video" autoplay playsinline></video>
-  </div>
+  <!-- Hidden file input triggers native camera -->
+  <input type="file" accept="image/*" capture="environment" id="cameraInput" class="hidden">
 
-  <!-- Transactions Section (hidden initially) -->
+  <!-- Transactions Section -->
   <div id="transactionsSection" class="hidden">
-    <button id="backToMenuBtn">Back</button>
+    <button class="liquid-btn" id="backToMenuBtn">Back</button>
     <h2>Transaction History</h2>
     <ul id="list"></ul>
   </div>
